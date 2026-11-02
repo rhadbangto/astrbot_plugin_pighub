@@ -1,6 +1,19 @@
-name: helloworld # 插件唯一识别名，以 astrbot_plugin_ 前缀开头
-display_name: helloworld # 用于展示的名字，可以是方便人类阅读的名字（需要版本 >= v4.5.0，低版本不会报错，请放心填写）
-desc: AstrBot 插件示例。 # 插件简短描述
-version: v1.3.0 # 插件版本号。格式：v1.1.1 或者 v1.1
-author: Soulter # 作者
-repo: https://github.com/Soulter/helloworld # 插件的仓库地址
+name: "astrbot_plugin_pighub"
+display_name: "随机猪猪"
+short_desc: "发送 /随机猪猪，随机来一张 pighub.top 的猪猪图"
+desc: |
+  发送「/随机猪猪」随机回复一张 pighub.top 的猪猪图片；
+  「/随机猪猪 关键词」按标题/文件名筛选，查不到会回复「根本没有这样的小猪！！」；
+  群聊每人每天限 10 次（可配置），私聊不限量；支持群聊黑白名单与管理员名单，
+  管理员触发无冷却、无每日上限。
+version: "1.2.0"
+author: "rhadbangto"
+repo: "https://github.com/rhadbangto/astrbot_plugin_pighub"
+astrbot_version: ">=4.24.0"
+support_platforms:
+  - aiocqhttp
+tags:
+  - 娱乐
+  - 图片
+  - 随机
+  - 群聊

@@ -1,0 +1,68 @@
+{
+  "sort_mode": {
+    "description": "图库排序方式",
+    "hint": "random / latest 都是随机取（接口 sort=2），popular 按热度（sort=3），oldest 最早（sort=1），name 按文件名（sort=0）。默认 random。",
+    "type": "string",
+    "default": "random"
+  },
+  "keyword": {
+    "description": "默认只发标题或文件名含该关键词的图",
+    "hint": "留空表示全部。也可以用「/随机猪猪 关键词」临时指定，指令里的关键词优先。",
+    "type": "string",
+    "default": ""
+  },
+  "daily_limit": {
+    "description": "每位用户每天的抽取上限（仅群聊）",
+    "hint": "默认 10 次，到上限后只回复提示不再发图；私聊与管理员不受限制。填 0 表示不限制。",
+    "type": "int",
+    "default": 10
+  },
+  "cooldown_seconds": {
+    "description": "同一会话冷却秒数",
+    "hint": "默认 5 秒，避免有人连发刷屏；管理员触发不受冷却限制。",
+    "type": "int",
+    "default": 5
+  },
+  "cache_minutes": {
+    "description": "图库列表缓存分钟数",
+    "hint": "默认 10 分钟；站点更新新图后最多这么久才可见。",
+    "type": "int",
+    "default": 10
+  },
+  "send_title": {
+    "description": "发图前先发标题",
+    "hint": "开启后会先发一条「🐷 图片来源标题」的文本，再发图片。默认关闭。",
+    "type": "bool",
+    "default": false
+  },
+  "allow_private": {
+    "description": "允许私聊触发",
+    "hint": "关闭后只响应群聊里的「/随机猪猪」。",
+    "type": "bool",
+    "default": true
+  },
+  "group_whitelist": {
+    "description": "群聊白名单",
+    "hint": "留空 = 所有群都允许。填了群号后就只在这些群里响应；支持裸群号（如 924818395）或 A1:GroupMessage:924818395 这种完整会话 ID。黑名单优先：同一群同时在黑白名单里会被拦截。",
+    "type": "list",
+    "default": []
+  },
+  "group_blacklist": {
+    "description": "群聊黑名单",
+    "hint": "这些群里不响应「/随机猪猪」。支持裸群号或完整会话 ID。优先级高于白名单。",
+    "type": "list",
+    "default": []
+  },
+  "admin_users": {
+    "description": "管理员 QQ 号",
+    "hint": "名单里的用户可以无视每日次数上限和冷却（AstrBot 全局管理员自动算管理员，不用重复填）。",
+    "type": "list",
+    "default": []
+  },
+  "max_size_mb": {
+    "description": "单张图片大小上限（MB）",
+    "hint": "超过上限的图片会被跳过，避免发送失败。默认 15。",
+    "type": "int",
+    "default": 15
+  }
+}

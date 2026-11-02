@@ -1,14 +1,226 @@
-# astrbot-plugin-helloworld
+# 随机猪猪 · astrbot_plugin_pighub
 
-AstrBot 插件模板 / A template plugin for AstrBot plugin feature
+从 [pighub.top](https://pighub.top/) 随机抓一张猪猪图片发到群里。触发词是 **`/随机猪猪`**，支持按关键词筛图、每人每日次数限制。
 
-> [!NOTE]
-> This repo is just a template of [AstrBot](https://github.com/AstrBotDevs/AstrBot) Plugin.
-> 
-> [AstrBot](https://github.com/AstrBotDevs/AstrBot) is an agentic assistant for both personal and group conversations. It can be deployed across dozens of mainstream instant messaging platforms, including QQ, Telegram, Feishu, DingTalk, Slack, LINE, Discord, Matrix, etc. In addition, it provides a reliable and extensible conversational AI infrastructure for individuals, developers, and teams. Whether you need a personal AI companion, an intelligent customer support agent, an automation assistant, or an enterprise knowledge base, AstrBot enables you to quickly build AI applications directly within your existing messaging workflows.
+> 插件只负责「取图 + 转发」，图片版权归 pighub.top 及其上传者。
 
-# Supports
+- **插件 ID**：`astrbot_plugin_pighub`
+- **版本**：1.2.0
+- **作者**：DSH
+- **适用**：AstrBot >= 4.24.0，平台 `aiocqhttp`（NapCat / OneBot v11），已在 NapCat + AstrBot 4.29.3 上验证
+- **数据源**：`https://pighub.top/api/images?sort=2`（当前图库约 1361 张）
 
-- [AstrBot Repo](https://github.com/AstrBotDevs/AstrBot)
-- [AstrBot Plugin Development Docs (Chinese)](https://docs.astrbot.app/dev/star/plugin-new.html)
-- [AstrBot Plugin Development Docs (English)](https://docs.astrbot.app/en/dev/star/plugin-new.html)
+---
+
+## 快速开始
+
+在群里发：
+
+```text
+/随机猪猪
+```
+
+机器人会下载一张 pighub 上的图并发出来。
+
+> ⚠️ **必须带 `/` 前缀**。直接发「随机猪猪」、或「小黏糕随机猪猪」都不会触发本插件（`小黏糕` / `小羽毛` 是 AstrBot 的备用唤醒词，本插件只认 `/`）。
+
+---
+
+## 指令一览
+
+| 你发送的内容 | 机器人行为 |
+| --- | --- |
+| `/随机猪猪` | 随机回一张 pighub 图片 |
+| `/随机猪猪 磁流体` | 只回标题或文件名含「磁流体」的图 |
+| `/随机猪猪 磁流体！` | 同上（句末标点会被忽略） |
+| `/随机猪猪 不存在的词` | 回文本：`根本没有这样的小猪！！` |
+| `/随机猪猪  磁 流体` | 关键词里的空格会被忽略，等价于「磁流体」 |
+| 私聊 `/随机猪猪` | 正常回图，且**不计入**每日次数 |
+
+触发判定是严格匹配的：
+
+1. 取消息里原始文本（保留 `/`，不受 `wake_prefix` 剥离影响），去掉首尾空白；
+2. 必须以 `/` 开头；
+3. `/` 后面必须以「随机猪猪」开头；
+4. 「随机猪猪」后面只能是 **结尾、空白，或句末标点** `! ！ 。 . ~ ～ ? ？ , ， 、`；
+5. 剩余部分就是关键词（去掉首尾标点和全部空白）。
+
+所以以下都**不会**触发：`随机猪猪`、`小黏糕随机猪猪`、`/随机猪猪们`、`/随机猪猪2`、`/随机猪猪好可爱`、`下午随机猪猪`。
+
+### 关键词匹配规则
+
+- 关键词与「图片标题 + 文件名」做匹配，**大小写不敏感**，两边都去掉空白后做子串包含判断；
+- 指令里写的关键词优先于配置项 `keyword`；
+- 关键词筛不到任何图时，只回 `根本没有这样的小猪！！`（不再随机兜底）；
+- 关键词是「宽匹配」，比如 `笨蛋` 会命中「你们都聪明 只有我是笨蛋.jpg」这类图。
+
+---
+
+## 群聊名单与管理员
+
+### 群聊白名单 / 黑名单
+
+配置项 `group_whitelist`、`group_blacklist` 都是列表，元素既可以写**裸群号**（`924818395`），也可以写完整的会话 ID（`A1:GroupMessage:924818395`）。
+
+判定顺序：
+
+1. **私聊**：完全不受这两个名单影响（只看 `allow_private`）；
+2. **黑名单优先**：群号命中 `group_blacklist` → 不响应，连后续 LLM 也不会接这句话；
+3. **白名单**：`group_whitelist` 为空 = 所有群都允许；不为空时，群号不在名单里 → 不响应；
+4. 两个名单都命中同一个群时，按黑名单处理。
+
+被名单排除时机器人**完全静默**（不发提示），避免在无关群里刷存在感。
+
+### 管理员
+
+满足任意一条即为本插件的管理员：
+
+- AstrBot **全局管理员**（`cmd_config.json` 里的 `admins_id`，聊天里 `role == "admin"` 的发送者）；
+- `admin_users` 名单里的 QQ 号。
+
+管理员的特权只有两条（群名单仍然对他们生效）：
+
+| 特权 | 说明 |
+| --- | --- |
+| 免冷却 | 不受 `cooldown_seconds` 限制，可以连续触发 |
+| 免每日上限 | 不受 `daily_limit` 限制，也不消耗当日次数 |
+
+---
+
+## 每日次数限制
+
+- **群聊**：每位发送者（按 QQ 号）每天最多抽 **10 次**；
+- **私聊**：不受限制（只要 `allow_private` 开着）；
+- 到达上限后只回一条提示，不再发图：
+
+  ```text
+  你今天的小猪次数已经用完啦（10/10），明天再来吧～ 私聊不限量哦 🐷
+  ```
+
+- 次数存于 `plugin_data/astrbot_plugin_pighub/usage.json`，**重启不清零**；日期变化（按服务器本地日期）后自动从 0 开始；
+- 只有「成功发出图片」的那次才计数，被冷却吞掉或下载失败的请求不计；
+- **管理员不受上限限制，也不消耗次数**；
+- 想关掉限制：把 `daily_limit` 设为 `0`。
+
+---
+
+## 冷却与防刷屏
+
+| 机制 | 说明 |
+| --- | --- |
+| 会话冷却 | 同一会话（群 / 私聊分别计算）5 秒内重复触发会被**静默忽略**，不发任何消息；管理员不受冷却限制 |
+| 不重复 | 最近 40 张发过的图不会被再次选中（候选不足 40 张时退回全量随机） |
+| 大小上限 | 单张超过 `max_size_mb`（默认 15MB）的图会被跳过，避免发送失败 |
+| 下载重试 | 随机挑一张失败时会再试，最多尝试 4 张 |
+
+---
+
+## 配置项
+
+配置文件位置：`data/config/astrbot_plugin_pighub_config.json`
+（也可以在 WebUI 的插件设置里改；**改完需要重启 AstrBot 才生效**）
+
+| 配置项 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `sort_mode` | string | `random` | 图库排序：`random`/`latest`（都取 sort=2 随机）、`popular`（热度）、`oldest`（最早）、`name`（文件名） |
+| `keyword` | string | 空 | 默认只发含该关键词的图；指令里的关键词优先 |
+| `daily_limit` | int | `10` | 群聊每人每日次数上限，`0` = 不限 |
+| `cooldown_seconds` | int | `5` | 同会话冷却秒数，`0` = 不冷却 |
+| `cache_minutes` | int | `10` | 图库列表缓存分钟数（站点加新图后最多这么久可见） |
+| `send_title` | bool | `false` | 开启后先发一条「🐷 图片来源标题」再发图 |
+| `allow_private` | bool | `true` | 是否允许私聊触发 |
+| `group_whitelist` | list | 空 | 只在这些群里响应；空 = 所有群。支持裸群号或 `A1:GroupMessage:924818395` |
+| `group_blacklist` | list | 空 | 这些群不响应；优先级高于白名单 |
+| `admin_users` | list | 空 | 管理员 QQ 号，免冷却、免每日上限（全局管理员自动算） |
+| `max_size_mb` | int | `15` | 单张图片大小上限 |
+
+---
+
+## 安装 / 更新
+
+1. 把整个 `astrbot_plugin_pighub` 文件夹放到 AstrBot 的 `data/plugins/` 下；
+2. 重启 AstrBot（或 WebUI 里重载插件）；
+3. 日志里出现下面两行即加载成功：
+
+   ```text
+   Plugin astrbot_plugin_pighub (1.2.0) by DSH
+   pighub 图库已刷新，共 1361 张
+   ```
+
+依赖只看 AstrBot 自带的 `aiohttp`，不需要额外 `pip install`（AstrBot 实例 venv 里已有）。
+
+### 白名单（重要）
+
+如果 AstrBot 开了会话白名单（`platform_settings.enable_id_white_list = true`），要保证目标群在白名单里。AstrBot 4.29.x 里 `unified_msg_origin` 的前缀是**平台实例 id**（比如 `A1`），不是平台名 `aiocqhttp`，所以白名单建议同时写：
+
+```text
+A1:GroupMessage:924818395
+924818395
+```
+
+只写 `aiocqhttp:GroupMessage:924818395` 时，普通群友的消息会被拦掉（管理员因 `wl_ignore_admin_on_group` 豁免，看起来像「只有我能用」）。
+
+---
+
+## 数据目录
+
+```text
+data/plugin_data/astrbot_plugin_pighub/
+├── images/          # 已下载的图片缓存（按 URL 的 sha1 命名，可随时清空）
+├── list_cache.json  # 图库列表磁盘缓存（接口挂掉时兜底）
+└── usage.json       # 每用户每日次数 {"date": "...", "counts": {"QQ号": 次数}}
+```
+
+- 删 `images/`：只是丢掉本地缓存，下次重新下载；
+- 删 `list_cache.json`：下次重新拉图库列表；
+- 删 `usage.json`：当天所有计数清零（会重新生成）。
+
+---
+
+## 工作原理
+
+1. **拉列表**：`GET https://pighub.top/api/images?sort=<0|1|2|3>`，返回 `{"code":0,"data":[{"id","title","filename","image_url",...}]}`。`sort` 是整数（0=name，1=oldest，2=latest/random，3=popular），传字符串会报 `40000 请求参数或正文错误`。
+2. **选图**：按关键词过滤 → 排除最近 40 张 → 随机打乱。
+3. **下载**：`https://pighub.top` + `image_url`（相对路径），中文文件名先做百分号编码，失败再回退原始 URL；校验 `Content-Type: image/*` 与大小。
+4. **发送**：以图片消息发送（aiocqhttp 下会被转成 `base64://` 交给 NapCat）；可选先发标题。
+5. **兜底链路**：接口失败 → 内存缓存 → `list_cache.json` → 本地已下载图片；全都拿不到才回「猪猪图床暂时连不上，等会儿再试吧 🐷」。
+6. 处理完会 `stop_event()`，避免同一句话再被 LLM 或群聊增强插件补一句；handler 优先级设为 1000（高于普通插件的默认 0），确保尽量早处理。
+
+---
+
+## 常见问题
+
+| 现象 | 原因 / 处理 |
+| --- | --- |
+| 群里只有管理员有反应，普通群友发指令无回复 | 白名单 UMO 前缀是平台实例 id（`A1`）而非 `aiocqhttp`，见上方「白名单」 |
+| 发「随机猪猪」没反应 | 必须带 `/` 前缀 |
+| 关键词明明有图却提示没有 | 关键词要和**标题或文件名**的子串完全一致（空格忽略、大小写不敏感），先发 `/随机猪猪` 看看随机图，再去站点上确认标题写法 |
+| 改了配置没生效 | 配置不热加载，重启 AstrBot |
+| 日志报 8188 连接失败 / ComfyUI 相关错误 | 与本插件无关，是别的出图插件的问题 |
+| 站点接口变更导致拉不到图 | 看日志里的 `拉取 pighub 图库失败`；在 `_fetch_items` 里调整接口即可 |
+| 机器人不回复任何消息 | 确认 AstrBot 单实例运行（launcher 与手动 `python main.py` 二选一），且 NapCat 已连上 `ws://127.0.0.1:6199` |
+
+---
+
+## 版本记录
+
+### 1.2.0
+- 新增 `group_whitelist` / `group_blacklist`：按群控制是否响应（黑名单优先，私聊不受影响）；
+- 新增管理员机制：AstrBot 全局管理员 + `admin_users` 名单，管理员免冷却、免每日上限且不消耗次数；
+- 被名单排除的群完全静默，并阻止该条消息继续流向 LLM。
+
+### 1.1.0
+- 触发改为**必须带 `/` 前缀**（不再识别裸「随机猪猪」与备用唤醒词）；
+- 新增 `/随机猪猪 <关键词>`，无结果回「根本没有这样的小猪！！」；
+- 新增群聊每人每日 10 次限制（私聊不限），次数持久化；
+- handler 设置高优先级并在处理完停止事件传播，避免群聊增强插件/LLM 重复回复。
+
+### 1.0.0
+- 首个版本：`随机猪猪` 随机回一张 pighub 图片，带冷却、去重、大小限制与本地缓存兜底。
+
+---
+
+## 致谢
+
+- 图片来自 [PigHub](https://pighub.top/)；
+- 指令与消息处理基于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 插件 API。
