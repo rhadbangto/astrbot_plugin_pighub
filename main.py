@@ -35,8 +35,9 @@ BASE_URL = "https://pighub.top"
 IMAGES_API = f"{BASE_URL}/api/images"
 
 TRIGGER_WORD = "随机猪猪"
+TRIGGER_ALIAS = "sjzz"
 # 只是让消息进入 handler 的粗筛，真正的判定在 _parse_trigger 里做（要求 / 前缀）
-TRIGGER_PATTERN = r"随机猪猪"
+TRIGGER_PATTERN = r"(?i)随机猪猪|sjzz"
 KEYWORD_MISS_TEXT = "根本没有这样的小猪！！"
 
 SORT_MAP = {"random": 2, "latest": 2, "popular": 3, "oldest": 1, "name": 0}
@@ -172,7 +173,8 @@ class PigHubPlugin(Star):
     def _parse_trigger(self, event: AstrMessageEvent) -> tuple[bool, str]:
         """判断是否为本插件指令，返回 (是否命中, 关键词)。
 
-        必须带 "/"（或全角「／」）前缀；"/随机猪猪 磁流体" 的「磁流体」作为关键词。
+        必须带 "/"（或全角「／」）前缀；支持「/随机猪猪」与「/sjzz」，
+        "/随机猪猪 磁流体" 的「磁流体」作为关键词。
         """
         # 中文输入法很容易打出全角斜杠，统一成半角再判断
         text = _plain_text(event).strip().replace("／", "/")
@@ -181,9 +183,13 @@ class PigHubPlugin(Star):
         if not text.startswith("/"):
             return False, ""
         body = text[1:].strip()
-        if not body.startswith(TRIGGER_WORD):
+        # 指令词：/随机猪猪 或 /sjzz（大小写不敏感）
+        if body.startswith(TRIGGER_WORD):
+            rest = body[len(TRIGGER_WORD) :]
+        elif body.lower().startswith(TRIGGER_ALIAS):
+            rest = body[len(TRIGGER_ALIAS) :]
+        else:
             return False, ""
-        rest = body[len(TRIGGER_WORD) :]
         if rest and not rest[0].isspace() and rest[0] not in "!！。.~～?？,，、":
             # 比如「/随机猪猪们」「/随机猪猪2」，不当作指令
             return False, ""
