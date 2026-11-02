@@ -6,7 +6,7 @@
 
 - **插件 ID**：`astrbot_plugin_pighub`
 - **版本**：1.2.0
-- **作者**：DSH
+- **作者**：rhadbangto
 - **适用**：AstrBot >= 4.24.0，平台 `aiocqhttp`（NapCat / OneBot v11），已在 NapCat + AstrBot 4.29.3 上验证
 - **数据源**：`https://pighub.top/api/images?sort=2`（当前图库约 1361 张）
 
@@ -143,7 +143,7 @@
 3. 日志里出现下面两行即加载成功：
 
    ```text
-   Plugin astrbot_plugin_pighub (1.2.0) by DSH
+   Plugin astrbot_plugin_pighub (1.2.0) by rhadbangto
    pighub 图库已刷新，共 1361 张
    ```
 
@@ -224,3 +224,8 @@ data/plugin_data/astrbot_plugin_pighub/
 
 - 图片来自 [PigHub](https://pighub.top/)；
 - 指令与消息处理基于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 插件 API。
+
+## License
+
+MIT，见 [LICENSE](LICENSE)。插件本身不打包任何图片，图片版权归 pighub.top 及上传者所有。
+
