@@ -172,9 +172,10 @@ class PigHubPlugin(Star):
     def _parse_trigger(self, event: AstrMessageEvent) -> tuple[bool, str]:
         """判断是否为本插件指令，返回 (是否命中, 关键词)。
 
-        必须带 "/" 前缀；"/随机猪猪 磁流体" 的「磁流体」作为关键词。
+        必须带 "/"（或全角「／」）前缀；"/随机猪猪 磁流体" 的「磁流体」作为关键词。
         """
-        text = _plain_text(event).strip()
+        # 中文输入法很容易打出全角斜杠，统一成半角再判断
+        text = _plain_text(event).strip().replace("／", "/")
         if not text:
             return False, ""
         if not text.startswith("/"):
@@ -209,9 +210,9 @@ class PigHubPlugin(Star):
             await event.send(event.plain_result(self._limit_text(limit)))
             return
 
-        # 同一会话冷却，防止刷屏；管理员不受冷却限制
+        # 冷却按「会话 + 用户」计算：同一个人刷屏会被拦，但不会把群里其他人一起卡住
         cooldown = self._int_conf("cooldown_seconds", DEFAULT_COOLDOWN)
-        session_key = event.unified_msg_origin
+        session_key = f"{event.unified_msg_origin}:{uid}"
         now = time.time()
         last = self._last_sent.get(session_key, 0.0)
         if cooldown > 0 and not is_admin and now - last < cooldown:

@@ -1,12 +1,8 @@
-name: "astrbot_plugin_pighub"
+﻿name: "astrbot_plugin_pighub"
 display_name: "随机猪猪"
 short_desc: "发送 /随机猪猪，随机来一张 pighub.top 的猪猪图"
-desc: |
-  发送「/随机猪猪」随机回复一张 pighub.top 的猪猪图片；
-  「/随机猪猪 关键词」按标题/文件名筛选，查不到会回复「根本没有这样的小猪！！」；
-  群聊每人每天限 10 次（可配置），私聊不限量；支持群聊黑白名单与管理员名单，
-  管理员触发无冷却、无每日上限。
-version: "1.2.0"
+desc: "发送「/随机猪猪」随机回复一张 pighub.top 的猪猪图片；「/随机猪猪 关键词」按关键词筛选；群聊每人每天限 10 次；支持群聊黑白名单与管理员（免冷却免上限）"
+version: "1.2.1"
 author: "rhadbangto"
 repo: "https://github.com/rhadbangto/astrbot_plugin_pighub"
 astrbot_version: ">=4.24.0"

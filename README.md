@@ -1,11 +1,11 @@
-# 随机猪猪 · astrbot_plugin_pighub
+﻿# 随机猪猪 · astrbot_plugin_pighub
 
 从 [pighub.top](https://pighub.top/) 随机抓一张猪猪图片发到群里。触发词是 **`/随机猪猪`**，支持按关键词筛图、每人每日次数限制。
 
 > 插件只负责「取图 + 转发」，图片版权归 pighub.top 及其上传者。
 
 - **插件 ID**：`astrbot_plugin_pighub`
-- **版本**：1.2.0
+- **版本**：1.2.1
 - **作者**：rhadbangto
 - **适用**：AstrBot >= 4.24.0，平台 `aiocqhttp`（NapCat / OneBot v11），已在 NapCat + AstrBot 4.29.3 上验证
 - **数据源**：`https://pighub.top/api/images?sort=2`（当前图库约 1361 张）
@@ -22,7 +22,7 @@
 
 机器人会下载一张 pighub 上的图并发出来。
 
-> ⚠️ **必须带 `/` 前缀**。直接发「随机猪猪」、或「小黏糕随机猪猪」都不会触发本插件（`小黏糕` / `小羽毛` 是 AstrBot 的备用唤醒词，本插件只认 `/`）。
+> ⚠️ **必须带 `/` 前缀**（中文输入法打出的全角 `／` 也认）。直接发「随机猪猪」、或「小黏糕随机猪猪」都不会触发本插件（`小黏糕` / `小羽毛` 是 AstrBot 的备用唤醒词，本插件只认斜杠）。
 
 ---
 
@@ -31,6 +31,7 @@
 | 你发送的内容 | 机器人行为 |
 | --- | --- |
 | `/随机猪猪` | 随机回一张 pighub 图片 |
+| `／随机猪猪`（全角斜杠） | 同上，等同 `/随机猪猪` |
 | `/随机猪猪 磁流体` | 只回标题或文件名含「磁流体」的图 |
 | `/随机猪猪 磁流体！` | 同上（句末标点会被忽略） |
 | `/随机猪猪 不存在的词` | 回文本：`根本没有这样的小猪！！` |
@@ -108,7 +109,7 @@
 
 | 机制 | 说明 |
 | --- | --- |
-| 会话冷却 | 同一会话（群 / 私聊分别计算）5 秒内重复触发会被**静默忽略**，不发任何消息；管理员不受冷却限制 |
+| 用户冷却 | 同一用户（群 / 私聊分别计算）5 秒内重复触发会被**静默忽略**，不发任何消息；群里其他人不受影响，管理员不受冷却限制 |
 | 不重复 | 最近 40 张发过的图不会被再次选中（候选不足 40 张时退回全量随机） |
 | 大小上限 | 单张超过 `max_size_mb`（默认 15MB）的图会被跳过，避免发送失败 |
 | 下载重试 | 随机挑一张失败时会再试，最多尝试 4 张 |
@@ -125,7 +126,7 @@
 | `sort_mode` | string | `random` | 图库排序：`random`/`latest`（都取 sort=2 随机）、`popular`（热度）、`oldest`（最早）、`name`（文件名） |
 | `keyword` | string | 空 | 默认只发含该关键词的图；指令里的关键词优先 |
 | `daily_limit` | int | `10` | 群聊每人每日次数上限，`0` = 不限 |
-| `cooldown_seconds` | int | `5` | 同会话冷却秒数，`0` = 不冷却 |
+| `cooldown_seconds` | int | `5` | 同一用户冷却秒数（不同用户互不影响），`0` = 不冷却 |
 | `cache_minutes` | int | `10` | 图库列表缓存分钟数（站点加新图后最多这么久可见） |
 | `send_title` | bool | `false` | 开启后先发一条「🐷 图片来源标题」再发图 |
 | `allow_private` | bool | `true` | 是否允许私聊触发 |
@@ -143,7 +144,7 @@
 3. 日志里出现下面两行即加载成功：
 
    ```text
-   Plugin astrbot_plugin_pighub (1.2.0) by rhadbangto
+   Plugin astrbot_plugin_pighub (1.2.1) by rhadbangto
    pighub 图库已刷新，共 1361 张
    ```
 
@@ -204,6 +205,11 @@ data/plugin_data/astrbot_plugin_pighub/
 
 ## 版本记录
 
+### 1.2.1
+- 冷却从「整个会话共享」改为「会话 + 用户」计算：群里一个人触发后，其他人不再被一起卡住；
+- 兼容中文输入法的全角斜杠 `／随机猪猪`；
+- 修复「群里看起来只有管理员能触发」的观感问题（管理员免冷却 + 旧版整群共享冷却导致他人被静默吞掉）。
+
 ### 1.2.0
 - 新增 `group_whitelist` / `group_blacklist`：按群控制是否响应（黑名单优先，私聊不受影响）；
 - 新增管理员机制：AstrBot 全局管理员 + `admin_users` 名单，管理员免冷却、免每日上限且不消耗次数；
@@ -224,8 +230,3 @@ data/plugin_data/astrbot_plugin_pighub/
 
 - 图片来自 [PigHub](https://pighub.top/)；
 - 指令与消息处理基于 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 插件 API。
-
-## License
-
-MIT，见 [LICENSE](LICENSE)。插件本身不打包任何图片，图片版权归 pighub.top 及上传者所有。
-

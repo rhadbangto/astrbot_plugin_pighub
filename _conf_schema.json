@@ -18,8 +18,8 @@
     "default": 10
   },
   "cooldown_seconds": {
-    "description": "同一会话冷却秒数",
-    "hint": "默认 5 秒，避免有人连发刷屏；管理员触发不受冷却限制。",
+    "description": "同一用户冷却秒数",
+    "hint": "默认 5 秒，避免同一个人连发刷屏；不同用户之间互不影响，管理员触发不受冷却限制。",
     "type": "int",
     "default": 5
   },
