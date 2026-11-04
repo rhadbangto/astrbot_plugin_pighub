@@ -1,7 +1,8 @@
 """PigHub 随机猪猪。
 
-群里发送「/随机猪猪」时，从 https://pighub.top 随机取一张猪猪图片发送出来。
+群里发送「/随机猪猪」或「/sjzz」时，从 https://pighub.top 随机取一张猪猪图片发送出来。
 发送「/随机猪猪 关键词」时，只发标题/文件名里含该关键词的图；查不到就回一句提示。
+管理员可以用「/sjzz 关键词 数量」一次要 1~10 张（小数向下取整），普通用户固定 1 张。
 图库列表来自 https://pighub.top/api/images?sort=2，图片直链为 https://pighub.top + image_url。
 
 群聊里每位用户每天有抽取上限（默认 10 次），私聊不限。
@@ -26,7 +27,7 @@ import aiohttp
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.message_components import Plain
+from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core import AstrBotConfig
 
@@ -39,6 +40,9 @@ TRIGGER_ALIAS = "sjzz"
 # 只是让消息进入 handler 的粗筛，真正的判定在 _parse_trigger 里做（要求 / 前缀）
 TRIGGER_PATTERN = r"(?i)随机猪猪|sjzz"
 KEYWORD_MISS_TEXT = "根本没有这样的小猪！！"
+DEFAULT_IMAGE_COUNT = 1
+MAX_IMAGE_COUNT = 10
+IMAGE_COUNT_RE = re.compile(r"\d+(?:\.\d+)?")
 
 SORT_MAP = {"random": 2, "latest": 2, "popular": 3, "oldest": 1, "name": 0}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -147,8 +151,8 @@ class PigHubPlugin(Star):
     # 避免群聊增强（group_chat_plus）或 LLM 阶段再回复一遍。
     @filter.regex(TRIGGER_PATTERN, priority=1000)
     async def on_random_pig(self, event: AstrMessageEvent):
-        """收到「/随机猪猪 [关键词]」时回复一张 pighub.top 的图片。"""
-        hit, keyword = self._parse_trigger(event)
+        """收到「/随机猪猪 [关键词] [数量]」时回复 pighub.top 的图片。"""
+        hit, keyword, count = self._parse_trigger(event)
         if not hit:
             return
         if not self._group_allowed(event):
@@ -159,7 +163,7 @@ class PigHubPlugin(Star):
             event.stop_event()
             return
         try:
-            await self._handle(event, keyword)
+            await self._handle(event, keyword, count)
         except Exception as exc:  # noqa: BLE001 - 兜底，避免插件异常打断管线
             self.logger.exception("随机猪猪处理失败：%s", exc)
             try:
@@ -170,18 +174,19 @@ class PigHubPlugin(Star):
             # 处理完就结束本条消息，避免再被 LLM 兜底回复一次
             event.stop_event()
 
-    def _parse_trigger(self, event: AstrMessageEvent) -> tuple[bool, str]:
-        """判断是否为本插件指令，返回 (是否命中, 关键词)。
+    def _parse_trigger(self, event: AstrMessageEvent) -> tuple[bool, str, int]:
+        """判断是否为本插件指令，返回 (是否命中, 关键词, 请求张数)。
 
         必须带 "/"（或全角「／」）前缀；支持「/随机猪猪」与「/sjzz」，
-        "/随机猪猪 磁流体" 的「磁流体」作为关键词。
+        "/随机猪猪 磁流体" 的「磁流体」作为关键词；末尾的整数/小数是张数
+        （小数向下取整，范围 1~10，非管理员由 _handle 强制成 1 张）。
         """
         # 中文输入法很容易打出全角斜杠，统一成半角再判断
         text = _plain_text(event).strip().replace("／", "/")
         if not text:
-            return False, ""
+            return False, "", DEFAULT_IMAGE_COUNT
         if not text.startswith("/"):
-            return False, ""
+            return False, "", DEFAULT_IMAGE_COUNT
         body = text[1:].strip()
         # 指令词：/随机猪猪 或 /sjzz（大小写不敏感）
         if body.startswith(TRIGGER_WORD):
@@ -189,21 +194,34 @@ class PigHubPlugin(Star):
         elif body.lower().startswith(TRIGGER_ALIAS):
             rest = body[len(TRIGGER_ALIAS) :]
         else:
-            return False, ""
+            return False, "", DEFAULT_IMAGE_COUNT
         if rest and not rest[0].isspace() and rest[0] not in "!！。.~～?？,，、":
             # 比如「/随机猪猪们」「/随机猪猪2」，不当作指令
-            return False, ""
-        # 允许句末标点，并去掉关键词里的空白，方便和标题/文件名比对
-        keyword = rest.strip().strip("!！。.~～?？,，、")
-        return True, "".join(keyword.split())
+            return False, "", DEFAULT_IMAGE_COUNT
+        # 允许句末标点
+        rest = rest.strip().strip("!！。.~～?？,，、")
+        tokens = rest.split()
+        count = DEFAULT_IMAGE_COUNT
+        # 末尾是数字（整数或小数）就当作张数：小数向下取整，并夹到 1~10
+        if tokens and IMAGE_COUNT_RE.fullmatch(tokens[-1]):
+            try:
+                count = int(float(tokens[-1]))
+            except ValueError:
+                count = DEFAULT_IMAGE_COUNT
+            count = max(1, min(MAX_IMAGE_COUNT, count))
+            tokens = tokens[:-1]
+        # 关键词里去掉空白，方便和标题/文件名比对
+        return True, "".join(tokens), count
 
-    async def _handle(self, event: AstrMessageEvent, keyword: str) -> None:
+    async def _handle(self, event: AstrMessageEvent, keyword: str, count: int) -> None:
         is_private = event.is_private_chat()
         if is_private and not bool(self._conf("allow_private", True)):
             return
 
         uid = str(event.get_sender_id() or "")
         is_admin = self._is_plugin_admin(event)
+        # 多图只有管理员能用；普通用户显式写数字也只回 1 张
+        count = max(1, min(MAX_IMAGE_COUNT, int(count))) if is_admin else 1
         limit = self._int_conf("daily_limit", DEFAULT_DAILY_LIMIT)
         # 每日次数限制只作用于群聊；私聊与管理员不受限
         if (
@@ -241,20 +259,28 @@ class PigHubPlugin(Star):
         else:
             candidates = self._fresh(items)
 
-        path: Path | None = None
-        item: dict[str, Any] | None = None
-        if candidates:
-            path, item = await self._pick_and_download(candidates)
+        picks: list[tuple[Path, dict[str, Any] | None]] = []
+        pool = list(candidates)
+        for _ in range(count):
+            if not pool:
+                break
+            picked_path, picked_item = await self._pick_and_download(pool)
+            if picked_path is None:
+                break
+            picks.append((picked_path, picked_item))
+            if picked_item and picked_item.get("id") is not None:
+                picked_id = picked_item["id"]
+                pool = [it for it in pool if it.get("id") != picked_id]
 
-        if path is None:
+        if not picks:
             # 图库接口挂了也尽量用本地缓存过的图顶上
-            path = self._random_cached_image()
-
-        if path is None:
-            await event.send(
-                event.plain_result("猪猪图床暂时连不上，等会儿再试吧 🐷")
-            )
-            return
+            cached = self._random_cached_image()
+            if cached is None:
+                await event.send(
+                    event.plain_result("猪猪图床暂时连不上，等会儿再试吧 🐷")
+                )
+                return
+            picks = [(cached, None)]
 
         if not is_private and not is_admin and limit > 0 and uid:
             await self._consume_daily(uid)
@@ -262,13 +288,20 @@ class PigHubPlugin(Star):
         self._last_sent[session_key] = time.time()
         if len(self._last_sent) > 500:
             self._last_sent = {session_key: self._last_sent[session_key]}
-        if item and item.get("id") is not None:
-            self._recent.append(item["id"])
+        for _path, _item in picks:
+            if _item and _item.get("id") is not None:
+                self._recent.append(_item["id"])
 
-        if bool(self._conf("send_title", False)) and item and item.get("title"):
-            await event.send(event.plain_result(f"🐷 {item['title']}"))
+        if bool(self._conf("send_title", False)) and picks[0][1] and picks[0][1].get("title"):
+            await event.send(event.plain_result(f"🐷 {picks[0][1]['title']}"))
 
-        await event.send(event.image_result(str(path)))
+        files = [str(path) for path, _item in picks]
+        if len(files) == 1:
+            await event.send(event.image_result(files[0]))
+        else:
+            await event.send(
+                event.chain_result([Image.fromFileSystem(f) for f in files])
+            )
 
     # ------------------------------------------------------------------ 每日次数
 
