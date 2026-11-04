@@ -2,7 +2,7 @@
 
 群里发送「/随机猪猪」或「/sjzz」时，从 https://pighub.top 随机取一张猪猪图片发送出来。
 发送「/随机猪猪 关键词」时，只发标题/文件名里含该关键词的图；查不到就回一句提示。
-管理员可以用「/sjzz 关键词 数量」一次要 1~10 张（小数向下取整），普通用户固定 1 张。
+管理员可以用「/sjzz 关键词 数量」一次要 1~10 张（小数向下取整），普通用户写了数量会被提示只能用管理员。
 图库列表来自 https://pighub.top/api/images?sort=2，图片直链为 https://pighub.top + image_url。
 
 群聊里每位用户每天有抽取上限（默认 10 次），私聊不限。
@@ -40,6 +40,7 @@ TRIGGER_ALIAS = "sjzz"
 # 只是让消息进入 handler 的粗筛，真正的判定在 _parse_trigger 里做（要求 / 前缀）
 TRIGGER_PATTERN = r"(?i)随机猪猪|sjzz"
 KEYWORD_MISS_TEXT = "根本没有这样的小猪！！"
+COUNT_ADMIN_ONLY_TEXT = "只有管理员才能指定张数哦～ 直接发 /sjzz 可以拿一张 🐷"
 DEFAULT_IMAGE_COUNT = 1
 MAX_IMAGE_COUNT = 10
 IMAGE_COUNT_RE = re.compile(r"\d+(?:\.\d+)?")
@@ -174,19 +175,20 @@ class PigHubPlugin(Star):
             # 处理完就结束本条消息，避免再被 LLM 兜底回复一次
             event.stop_event()
 
-    def _parse_trigger(self, event: AstrMessageEvent) -> tuple[bool, str, int]:
-        """判断是否为本插件指令，返回 (是否命中, 关键词, 请求张数)。
+    def _parse_trigger(self, event: AstrMessageEvent) -> tuple[bool, str, int | None]:
+        """判断是否为本插件指令，返回 (是否命中, 关键词, 指定的张数)。
 
         必须带 "/"（或全角「／」）前缀；支持「/随机猪猪」与「/sjzz」，
         "/随机猪猪 磁流体" 的「磁流体」作为关键词；末尾的整数/小数是张数
-        （小数向下取整，范围 1~10，非管理员由 _handle 强制成 1 张）。
+        （小数向下取整，范围 1~10）。没写数字时张数为 None，由 _handle 决定：
+        1 张（且指定张数只有管理员能用）。
         """
         # 中文输入法很容易打出全角斜杠，统一成半角再判断
         text = _plain_text(event).strip().replace("／", "/")
         if not text:
-            return False, "", DEFAULT_IMAGE_COUNT
+            return False, "", None
         if not text.startswith("/"):
-            return False, "", DEFAULT_IMAGE_COUNT
+            return False, "", None
         body = text[1:].strip()
         # 指令词：/随机猪猪 或 /sjzz（大小写不敏感）
         if body.startswith(TRIGGER_WORD):
@@ -194,34 +196,44 @@ class PigHubPlugin(Star):
         elif body.lower().startswith(TRIGGER_ALIAS):
             rest = body[len(TRIGGER_ALIAS) :]
         else:
-            return False, "", DEFAULT_IMAGE_COUNT
+            return False, "", None
         if rest and not rest[0].isspace() and rest[0] not in "!！。.~～?？,，、":
             # 比如「/随机猪猪们」「/随机猪猪2」，不当作指令
-            return False, "", DEFAULT_IMAGE_COUNT
+            return False, "", None
         # 允许句末标点
         rest = rest.strip().strip("!！。.~～?？,，、")
         tokens = rest.split()
-        count = DEFAULT_IMAGE_COUNT
+        count: int | None = None
         # 末尾是数字（整数或小数）就当作张数：小数向下取整，并夹到 1~10
         if tokens and IMAGE_COUNT_RE.fullmatch(tokens[-1]):
             try:
                 count = int(float(tokens[-1]))
             except ValueError:
-                count = DEFAULT_IMAGE_COUNT
-            count = max(1, min(MAX_IMAGE_COUNT, count))
+                count = None
+            if count is not None:
+                count = max(1, min(MAX_IMAGE_COUNT, count))
             tokens = tokens[:-1]
         # 关键词里去掉空白，方便和标题/文件名比对
         return True, "".join(tokens), count
 
-    async def _handle(self, event: AstrMessageEvent, keyword: str, count: int) -> None:
+    async def _handle(
+        self, event: AstrMessageEvent, keyword: str, count: int | None
+    ) -> None:
         is_private = event.is_private_chat()
         if is_private and not bool(self._conf("allow_private", True)):
             return
 
         uid = str(event.get_sender_id() or "")
         is_admin = self._is_plugin_admin(event)
-        # 多图只有管理员能用；普通用户显式写数字也只回 1 张
-        count = max(1, min(MAX_IMAGE_COUNT, int(count))) if is_admin else 1
+        if count is not None and not is_admin:
+            # 指定张数是管理员专属，普通用户只认「/sjzz [关键词]」
+            await event.send(event.plain_result(COUNT_ADMIN_ONLY_TEXT))
+            return
+        count = (
+            max(1, min(MAX_IMAGE_COUNT, count))
+            if count is not None
+            else DEFAULT_IMAGE_COUNT
+        )
         limit = self._int_conf("daily_limit", DEFAULT_DAILY_LIMIT)
         # 每日次数限制只作用于群聊；私聊与管理员不受限
         if (
